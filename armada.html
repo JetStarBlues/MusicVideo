@@ -1,0 +1,950 @@
+<html>
+<!-- 
+	Coded by JK, www.jk-quantized.com
+	   based on this music video, https://youtu.be/h6-N8KuFRkk 
+
+	References
+	- Threejs starter code 
+		http://threejs.org/docs/#Reference/Extras.Geometries/TetrahedronGeometry
+	- Armada Logo 
+		http://threejs.org/examples/webgl_geometry_shapes.html
+	- Web Audio
+		http://chimera.labs.oreilly.com/books/1234000001552/
+	- Camera movement
+		https://rawgit.com/nselikoff/basic-camera-movement-three-js/master/index.html
+		http://www.smartjava.org/tjscb/03-camera/03.01-camera-follow-object.html
+
+	To Do
+	- Fix lighting
+	- Fix materials and colors
+	- Add depth (via fog?)
+	- Fix wonky edge/perspective effect
+	- Non linear camera moves
+-->
+
+<head>
+	<meta charset="utf-8">
+	<title></title>
+
+	<style>
+		body { 
+			margin: 0; 
+			overflow: hidden 
+		}
+		#loading {
+			margin: 0;
+			width: 100%;
+			height: 100%;
+			background: black;
+			position: absolute;
+			z-index: 100;
+
+			/*display: none;*/
+		}
+		#loading div.content {
+			/*css-tricks.com/centering-css-complete-guide*/
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+
+			font-family: "Lato";
+			text-align: center;
+			color: white;
+		}
+		#loading img {
+			width: 300px;
+			height: auto;
+		}
+		#loading .loadingTxt {			
+			font-size: 3em;				
+		}
+		#audioLoadError {
+			font-size: 1.25em;
+			line-height: 1.5em;
+			display: none;
+		}
+		#audioLoadError div:first-child {
+			font-size: 2em;
+			margin-bottom: 20px;
+		}
+		#audioLoadError a {
+			text-decoration: none;
+			color: #96C7EC;
+		}
+	</style>
+
+	<link href='https://fonts.googleapis.com/css?family=Lato:100' rel='stylesheet' type='text/css'>
+
+	<script src="js/requestAnimPolyfill.js"></script>
+	<script src="threejs/three.min.js"></script>
+	<script src="threejs/OrbitControls.js"></script>
+	<script src="js/armadaLogo.js"></script>
+	<script src="js/shared.js"></script>
+	<script src="js/visualizer-sample-2.js"></script>
+
+</head>
+
+<body>
+
+	<div id="loading">
+		<div class="content">
+			<div id="loadingScreen">
+				<img src="images/PH9Iul9.gif"> <!-- gif from, imgur.com/gallery/PH9Iul9 -->
+				<div class="loadingTxt"><span>LOADING</span></div>
+			</div>
+			<div id="audioLoadError">
+				<div>Music failed to load =/</div> 
+				<div>Try another browser!<br>
+					 Safe bets are <a href="https://www.google.com/chrome/">Chrome</a> and <a href="https://www.mozilla.org/firefox/">Firefox</a>
+				</div>
+			</div>	
+		</div>		
+	</div>
+
+<script>
+
+	// Setup /////////////////////////////////////////////////////////////////
+
+	var container = document.createElement( 'div' );
+	document.body.appendChild( container );
+
+	var scene = new THREE.Scene();
+
+	var renderer = new THREE.WebGLRenderer( { antialias: true } );
+	// renderer.setClearColor( 0xf0f0f0 );
+	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	container.appendChild( renderer.domElement );
+	
+
+	// Camera ////////////////////////////////////////////////////////////////
+
+	// var v = 0.9; //0.5;
+	// var camera = new THREE.OrthographicCamera( 
+	// 	v * window.innerWidth / - 2, v * window.innerWidth / 2, 
+	// 	v * window.innerHeight / 2, v * window.innerHeight / - 2, 1, 1000 );
+	// camera.position.set( 0, 0, 250 );
+
+	var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 1000 );
+	// camera.position.set( 0, 0, 400 );
+	
+
+	// Controls //////////////////////////////////////////////////////////////
+
+	// var orbit = new THREE.OrbitControls( camera, renderer.domElement );
+	// orbit.enableZoom = true;
+
+
+	// Lights ////////////////////////////////////////////////////////////////
+
+	var lights = [];
+
+	// To do - tweak/revisit ... see video
+	var lightData = [
+		// { x :    0, y :    0, z :  600, type : 1, intensity : 0.8 },
+		// { x :    0, y :    0, z : -600, type : 1, intensity : 0.3 },
+		// { x :    0, y :  600, z :    0, type : 1, intensity : 0.3 },
+		// { x :    0, y : -600, z :    0, type : 1, intensity : 0.5 },
+		// { x :    0, y :    0, z :  400, type : 0, intensity : 0.01 },
+		// { x :    0, y :    0, z : -800, type : 0, intensity : 0.01 },
+		// { x :    0, y :  800, z :    0, type : 0, intensity : 0.01 },
+		{ x : -1000, y : -1000, z : -1000, type : 0, intensity : 0.2 },
+		// { x :  400, y :    0, z :    0, type : 0 },
+		// { x : -400, y :    0, z :    0, type : 0 },
+		{ x :    0, y :    25, z :   25, type : 1, intensity : 0.5 }
+	];
+	for ( var i = 0; i < lightData.length; i++ ){
+
+		var l = lightData[i];
+
+		// create lights
+		var light;
+		if ( l.type == 0 )
+			light = new THREE.SpotLight( 0xffffff, l.intensity, 0 );
+		else if ( l.type == 1 )
+			light = new THREE.PointLight( 0xffffff, l.intensity, 0 );
+		light.position.set( l.x, l.y, l.z );
+		scene.add( light );
+
+		// draw cube markers
+		/*var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+		var material = new THREE.MeshLambertMaterial({ color: 0xFFA23D });		
+		var cube = new THREE.Mesh( geometry, material );
+		cube.position.set( l.x, l.y, l.z );
+		cube.scale.set( 10, 10, 10 );
+		scene.add( cube );*/
+	}
+
+
+
+
+	// Meshes ////////////////////////////////////////////////////////////////
+
+	// Helper Functions -----------------------------------------------------
+	var radians = function( deg ){
+		return deg * Math.PI / 180;
+	};
+
+
+	// Armada Logo ----------------------------------------------------------
+	var geometry = createShapeGeometry( armadaLogoShape, extrudeSettings, 0x00f000 );
+	var material = new THREE.MeshPhongMaterial({
+		color: 0xFFFABB,
+		emissive: 0xC8A86B,
+		side: THREE.DoubleSide,
+		shading: THREE.FlatShading
+	});
+
+	var armadaLogo = new THREE.Mesh( geometry, material );
+	armadaLogo.position.set( 0, 0, 30 );
+	armadaLogo.scale.set( 0.3, 0.3, 0.3 );
+	scene.add( armadaLogo );
+
+
+	// Simple square rings --------------------------------------------------
+	var simpleSquareRings = [];	
+
+	var geometry = new THREE.BoxGeometry( 1, 1, 0.025 );
+	var material = new THREE.MeshPhongMaterial({
+		color: 0xEF913A,
+		emissive: 0xFD6B13,
+		side: THREE.DoubleSide,
+		shading: THREE.FlatShading
+	});  
+
+	var genSquare = function ( s, x, y, z, rx, ry, rz ) {
+
+		var square = new THREE.Mesh( geometry, material );
+		square.position.set( x, y, z );
+		square.scale.set( s, s, s );
+		square.rotation.set( rx, ry, rz );
+		simpleSquareRing.add( square );
+	}
+
+	// Generate rings
+	var spacingSS = 80;
+	var spacing = spacingSS;
+	for ( var i = 0; i < 5; i++ ){
+
+		var simpleSquareRing = new THREE.Group();
+		scene.add( simpleSquareRing );
+
+		var s = 10;
+		var offset = 5;
+		var z = i * spacing - 2 * spacing;
+		var r = 70;
+		var step = Math.floor( 360 * ( s + offset ) / ( 2 * r * Math.PI ) );
+		for ( var angle = 0; angle < 360; angle += step ) {
+			var a = radians( angle );
+			var x = r * Math.cos( a );
+			var y = r * Math.sin( a );
+			genSquare( s, x, y, z, 0, 0, a );
+		}
+
+		simpleSquareRings.push( simpleSquareRing );
+	}
+
+
+	// Framed square rings --------------------------------------------------
+	var framedSquareRings = [];
+
+	var s_outerSquare = 2;
+	var s_innerSquare = 1;
+
+	var genFramedSquare = function( s, x, y, z, rx, ry, rz ){
+
+		var framedSquare = new THREE.Group();
+
+		// Inner square
+		var geometry = new THREE.BoxGeometry( 1, 1, 0.025 );
+		var material = new THREE.MeshPhongMaterial({
+			color: 0x156200,
+			emissive: 0x59AD9A,
+			side: THREE.DoubleSide,
+			shading: THREE.FlatShading
+		}); 
+		innerSquare = new THREE.Mesh( geometry, material );
+		innerSquare.position.set( 0, 0, 0 );
+		innerSquare.scale.set( s_innerSquare, s_innerSquare, s_innerSquare );
+		framedSquare.add( innerSquare );
+
+		// Outer square
+		var geometry = new THREE.WireframeGeometry( new THREE.BoxGeometry( 1, 1, 0.025 ) );
+		var material = new THREE.LineBasicMaterial({
+			color: 0xFFF79A,
+			transparent: true,
+			opacity: 0.04
+		});
+		var outerSquare = new THREE.LineSegments( geometry, material );
+		outerSquare.position.set( 0, 0, 0 );
+		outerSquare.scale.set( s_outerSquare, s_outerSquare, s_outerSquare );
+		framedSquare.add( outerSquare );
+
+		// Framed square transforms
+		framedSquare.position.set( x, y, z );
+		framedSquare.scale.set( s, s, s );
+		framedSquare.rotation.set( rx, ry, rz );
+
+		framedSquareRing.add( framedSquare );
+	}
+	
+	// Generate rings
+	var spacing = 1.5 * spacingSS;
+	for ( var i = 0; i < 3; i++ ){
+
+		var framedSquareRing = new THREE.Group();
+		scene.add( framedSquareRing );
+
+		var s = 5;
+		var offset = 15;
+		var z = i * spacing - spacing;
+		var r = 120;
+		var step = Math.floor( 360 * ( s + offset ) / ( 2 * r * Math.PI ) );
+		for ( var angle = 0; angle < 360; angle += step ) {
+			var a = radians( angle );
+			var x = r * Math.cos( a );
+			var y = r * Math.sin( a );
+			genFramedSquare( s, x, y, z, 0, 0, a );
+		}
+
+		framedSquareRings.push( framedSquareRing );
+	}
+
+
+	// Pyramid rings --------------------------------------------------------
+	var pyramidRings = [];
+
+	var genPyramid = function( s, x, y, z, rx, ry, rz ){
+
+		// Square Pyramid
+		// https://stemkoski.github.io/Three.js/js/polyhedra.js
+		/*var verticesOfPyramid = [
+			-0.729665, 0.670121, 0.319155,
+			-0.655235, -0.29213, -0.754096,
+			-0.093922, -0.607123, 0.537818,
+			0.702196, 0.595691, 0.485187,
+			0.776626, -0.36656, -0.588064
+		];
+		var facesOfPyramid = [
+		    1,4,2,
+		    0,1,2,
+		    3,0,2,
+		    4,3,2,
+		    4,1,0,  //sq part 1 (4,1,0,3)
+		    0,3,4   //sq part 2		    
+		];*/
+		var verticesOfPyramid = [
+			   0,    0,  0.25,
+			-0.5,  0.5, -0.25,
+			-0.5, -0.5, -0.25,
+			 0.5, -0.5, -0.25,
+			 0.5,  0.5, -0.25,
+		];
+		var facesOfPyramid = [
+		    0, 1, 2,
+		    0, 2, 3,
+		    0, 3, 4,
+		    0, 4, 1,
+		    1, 2, 3,  //sq part 1 (1,2,3,4)
+		    3, 4, 1   //sq part 2
+		];
+
+		var geometry = new THREE.PolyhedronGeometry( verticesOfPyramid, facesOfPyramid, 1, 0 );
+		var material = new THREE.MeshPhongMaterial({
+			color: 0xFF558C,
+			emissive: 0xCF2545,
+			side: THREE.DoubleSide,
+			shading: THREE.FlatShading
+		});
+
+		var pyramid = new THREE.Mesh( geometry, material );
+		pyramid.position.set( x, y, z );
+		pyramid.scale.set( s, s, s );
+		pyramid.rotation.set( rx, ry, rz );
+
+		pyramidRing.add( pyramid );
+	};
+
+	// Generate rings
+	var spacing = 2 * spacingSS;
+	for ( var i = 0; i < 2; i++ ){
+
+		var pyramidRing = new THREE.Group();
+		scene.add( pyramidRing );
+
+		var s = 5;
+		var offset = 20;
+		var z = i * spacing - spacing / 2;
+		var r = 175;
+		var step = Math.floor( 360 * ( s + offset ) / ( 2 * r * Math.PI ) );
+		for ( var angle = 0; angle < 360; angle += step ) {
+			var a = radians( angle );
+			var x = r * Math.cos( a );
+			var y = r * Math.sin( a );
+			genPyramid( s, x, y, z, 0, 0, a );
+		}
+
+		pyramidRings.push( pyramidRing );
+	}
+
+
+	// Outer sphere --------------------------------------------------------
+	var sphereRings = new THREE.Group();
+	scene.add( sphereRings );
+
+	var s_outerCube = 1;
+	var s_innerCube = 0.3;
+
+	var genFramedCube = function( s, x, y, z, rx, ry, rz ){
+
+		var framedCube = new THREE.Group();
+
+		// Inner cube
+		var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+		var material = new THREE.MeshPhongMaterial({
+			color: 0xFFFABB,
+			emissive: 0xE9D2A6,
+			side: THREE.DoubleSide,
+			shading: THREE.FlatShading
+		}); 
+		innerCube = new THREE.Mesh( geometry, material );
+		innerCube.scale.set( s_innerCube, s_innerCube, s_innerCube );
+		framedCube.add( innerCube );
+
+		// Outer cube
+		var geometry = new THREE.WireframeGeometry( new THREE.BoxGeometry( 1, 1, 1 ) );
+		var material = new THREE.LineBasicMaterial({
+			color: 0xFFF79A,
+			transparent: true,
+			opacity: 0.05
+		});
+		var outerCube = new THREE.LineSegments( geometry, material );
+		outerCube.scale.set( s_outerCube, s_outerCube, s_outerCube );
+		framedCube.add( outerCube );
+
+		// Framed cube transforms
+		framedCube.position.set( x, y, z );
+		framedCube.scale.set( s, s, s );
+		framedCube.rotation.set( rx, ry, rz );
+
+		sphereRing.add( framedCube );
+	}
+	
+	// Generate rings
+	var R = 300;
+	var a1_step = 15;
+
+	for ( var a1 = 0; a1 < 360; a1 += a1_step ){
+
+		var sphereRing = new THREE.Group();
+
+		// Find ring center and radius
+		//  mathworld.wolfram.com/CircularSegment.html
+		var r = R * Math.sin( radians( a1/2 ) );
+		var cz = R * Math.cos( radians( a1/2 ) );
+		var cx = cy = 0;
+
+		/*//test
+		var geometry = new THREE.CircleGeometry( r, 32 );
+		var material = new THREE.MeshPhongMaterial({
+			color: 0xFFFABB,
+			emissive: 0xC8A86B,
+			side: THREE.DoubleSide,
+			shading: THREE.FlatShading
+		});
+		var circle = new THREE.Mesh( geometry, material );
+		circle.position.set( cx, cy, cz );
+		scene.add( circle );*/
+
+
+		// Create ring
+		var s = 20;
+		var a2_step = 15;
+		var isOdd = false;
+		for ( var a2 = 0; a2 < 360; a2 += a2_step ){
+
+			//avoid bunching at top by skipping some blocks
+			isOdd = !isOdd; // toggle
+			if ( r < 120 && isOdd ){
+				continue;
+			}
+
+			//draw only one square at ends
+			if ( a1 == 0 || a1 + a1_step > 360 ){
+				if ( a2 > a2_step )
+					continue;  
+			}
+
+			//create cubes
+			var x = cx + r * Math.cos( radians( a2 ) );
+			var y = cy + r * Math.sin( radians( a2 ) );
+			genFramedCube( s, x, y, cz, 0, 0, 0 );
+		}
+		
+		sphereRings.add( sphereRing );
+	}
+
+
+
+	// Animations ////////////////////////////////////////////////////////////////
+
+	// Armada Logo ----------------------------------------------------------
+	var animArmadaLogo = function(){
+
+		armadaLogo.rotation.x += 0.01;  //rotate around local axis ?
+		armadaLogo.rotation.y += 0.01;
+	};
+
+	// Simple square rings --------------------------------------------------
+	var animSimpleSquareRings = function(){
+
+		for ( var i = 0; i < simpleSquareRings.length; i++ ){
+
+			var ring = simpleSquareRings[i];
+
+			for ( var j = 0; j < ring.children.length; j++ ){
+				ring.children[j].rotateY( 0.03 );  //rotate around global axis ?
+			}
+		}
+	};
+
+	// Framed square rings --------------------------------------------------
+	var animFramedSquareRings = function(){
+
+		for ( var i = 0; i < framedSquareRings.length; i++ ){
+
+			var ring = framedSquareRings[i];
+			ring.rotateZ( 0.003 );
+
+			for ( var j = 0; j < ring.children.length; j++ ){
+
+				var square = ring.children[j];
+				var inner_square = square.children[0];
+				var outer_square = square.children[1];
+
+				inner_square.rotation.x -= 0.05;
+				outer_square.rotation.x += 0.05;
+			}
+		}
+	};
+
+	// Pyramid rings --------------------------------------------------------
+	var animPyramidRings = function(){
+
+		for ( var i = 0; i < pyramidRings.length; i++ ){
+
+			var ring = pyramidRings[i];
+			ring.rotateZ( 0.003 );
+
+			for ( var j = 0; j < ring.children.length; j++ ){
+				ring.children[j].rotateY( 0.07 );
+			}
+		}
+	};
+
+	// Outer sphere --------------------------------------------------------
+	var animOuterSphere = function(){
+
+		sphereRings.rotateZ( -0.005 );
+
+		for ( var i = 0; i < sphereRings.children.length; i++ ){
+
+			var ring = sphereRings.children[i];
+
+			for ( var j = 0; j < ring.children.length; j++ ){
+
+				var cube = ring.children[j];
+				var inner_cube = cube.children[0];
+
+				//change size with music
+				if( musicAvgFrequency > 0 ){
+					var s = musicAvgFrequency / 475;
+					inner_cube.scale.set( s, s, s );
+				}
+			}
+		}
+	};
+
+
+
+	// Move Camera ///////////////////////////////////////////////////////////
+
+	// Helper Functions -----------------------------------------------------
+	function mapRange(value, low1, high1, low2, high2) {
+		//stackoverflow.com/a/5650012
+	    return low2 + (high2 - low2) * (value - low1) / (high1 - low1);
+	}
+
+	// Global Variables -----------------------------------------------------
+	var musicStartTime; //seconds
+	var elapsedTime;
+	var startT;  //hacky, for timings that need a global var
+	var cameraAngle = new THREE.Vector3( 0, 0, radians( -45 ) );
+	var cameraPosition = new THREE.Vector3( 0, -70, 0 );
+	var targetPosition = new THREE.Vector3( 0, 0, 0 );
+
+	// Initialize scene -------------
+	camera.position.set( cameraPosition.x, cameraPosition.y, cameraPosition.z );
+	camera.lookAt( targetPosition );
+	camera.rotation.z = cameraAngle.z;
+
+	// Move camera ------------------
+	var moveCamera = function( time ){
+
+		// Setup ----------------------------------------------------
+
+		elapsedTime = time - musicStartTime;		
+
+		camera.position.set( cameraPosition.x, cameraPosition.y, cameraPosition.z );
+		camera.lookAt( targetPosition );
+		camera.rotation.z = cameraAngle.z;
+		
+		// Debug -----------------------------------------------------
+		/*
+		startTimeOfTest = 238;
+		if (elapsedTime < startTimeOfTest){
+
+			musicStartTime -= startTimeOfTest;  //change watch
+
+			//setup
+
+			targetPosition.set( 0, 0, 0 );
+			cameraPosition.set( 0, -150, 0 );
+			cameraAngle.z = 0;
+		}
+		*/
+
+
+		// Scene 1 ------------------------------------------------
+		/*
+			start aimed at center and pan out slowly, while tilting
+		*/
+		if ( elapsedTime > 5 && elapsedTime <= 90 ){	
+
+			if ( camera.position.y > -375 ){
+
+				// slowly pan out ( 0, -375, 0 )
+				cameraPosition.y -= 0.15;		
+			}
+
+			if ( cameraAngle.z < 0 ){
+
+				// slowly tilt camera ( 0, 0, 0 )
+				cameraAngle.z += radians( 0.02 );
+			}
+		}
+		// Scene 2 ------------------------------------------------
+		/*
+			move camera to bottom
+		*/
+		else if ( elapsedTime > 90 && elapsedTime <= 94 ){
+
+			// move to bottom ( 0, 0, -360 )
+
+			var rateOfChange = 360 / 70 ;
+
+			if ( cameraPosition.y < 0 ){
+
+				cameraPosition.y += rateOfChange;
+			}
+
+			if ( cameraPosition.z > -360 ){
+
+				cameraPosition.z -= rateOfChange;
+			}
+		}
+		// Scene 3 ------------------------------------------------
+		/*
+			move camera slowly to top
+		*/
+		else if ( elapsedTime > 94 && elapsedTime <= 150 ) {
+
+			targetPosition.set( 0, 0, 900 );
+			
+			// move to top ( 0, 0, 250 )
+
+			var rateOfChange = 660 / 2100 ;
+
+			if ( cameraPosition.z < 250 ){
+
+				cameraPosition.z += rateOfChange;
+			}
+		}
+		// Scene 4 ------------------------------------------------
+		/*
+			move camera quickly to bottom
+		*/
+		else if ( elapsedTime > 150 && elapsedTime <= 153 ) {
+			
+			// move to bottom ( 0, 0, -250 )
+
+			var rateOfChange = 13.2 ;
+
+			if ( cameraPosition.z > -425 ){
+
+				cameraPosition.z -= rateOfChange;
+			}
+		}
+		// Scene 5 ------------------------------------------------
+		/*
+			move camera quickly to new location
+		*/
+		else if ( elapsedTime > 153 && elapsedTime <= 156 ) {
+			
+			targetPosition.set( 0, 70, 900 );
+
+			// move to new loc ( 160, 0, -100 )
+			//move diagonally (via line between the two points)
+			var m = ( -100 + 250 ) / ( 160 - 0 );  // dz / dx
+
+			if ( cameraPosition.x < 160 ){
+
+				cameraPosition.x += 2;
+				cameraPosition.z = m * ( cameraPosition.x - 0 ) - 250;  // z2 = m(x2 - x1) + z1
+			}
+		}
+		// Scene 6 ------------------------------------------------
+		/*
+			hold for a bit
+		*/
+		else if ( elapsedTime > 156 && elapsedTime <= 165 ){
+
+			// do nothing
+		}
+		// Scene 7 ------------------------------------------------
+		/*
+			pan left till reach sphere edge
+		*/
+		else if ( elapsedTime > 165 && elapsedTime <= 190 ){
+
+			// move to new loc ( 300, 0, -100 )
+
+			var rateOfChange = 0.17 ;
+
+			if ( cameraPosition.x < 300 ){
+
+				cameraPosition.x += rateOfChange;
+			}
+		}
+		// Scene 8 ------------------------------------------------
+		/*
+			move along surface of sphere to top
+		*/
+		else if ( elapsedTime > 190 && elapsedTime <= 225 ){
+			
+			// move to new loc ( 0, 0, 325 )
+			// move to new target ( 0, 400, 270 )
+
+			if ( cameraPosition.z < 0 ){
+
+				// pan straight up to get into position ( 300, 0, 0 )
+				var rateOfChange = 0.45;
+
+				cameraPosition.z += rateOfChange;
+				startT = elapsedTime;
+			}
+			else{
+
+				// move along surface of sphere to top ( 0, 0, 325 )
+				var deltaT = elapsedTime - startT;
+
+				// 90 degrees along surface
+				var theta = mapRange( deltaT, 0, 30, 0, radians(90) );
+				var r = mapRange( deltaT, 0, 30, 300, 325 );
+				cameraPosition.x = r * Math.cos( theta );
+				cameraPosition.z = r * Math.sin( theta );
+
+				var targetY = mapRange( deltaT, 0, 30,  70, 400 );
+				var targetZ = mapRange( deltaT, 0, 30, 900, 270 );
+				targetPosition.y = targetY;
+				targetPosition.z = targetZ;
+			}
+		}
+		// Scene 8b ------------------------------------------------
+		/*
+			hold for a bit
+		*/
+		else if ( elapsedTime > 225 && elapsedTime <= 230 ){
+
+			// do nothing
+		}
+		// Scene 9 ------------------------------------------------
+		/*
+			move along surface of sphere to side
+		*/
+		else if ( elapsedTime > 230 && elapsedTime <= 235 ){
+
+			// move to new loc ( 0, -375, 0 )
+			// move to new target ( 0, 0, 0 )
+
+			var deltaT = elapsedTime - 230;
+
+			// 90 degrees along surface
+			var theta = mapRange( deltaT, 0, 5, radians(90), radians(180) );
+			var r = mapRange( deltaT, 0, 5, 325, 375 );
+			cameraPosition.y = r * Math.cos( theta );
+			cameraPosition.z = r * Math.sin( theta );
+
+			var targetY = mapRange( deltaT, 0, 5, 400, 0 );
+			var targetZ = mapRange( deltaT, 0, 5, 270, 0 );
+			targetPosition.y = targetY;
+			targetPosition.z = targetZ;
+		}
+		// Scene 10 ------------------------------------------------
+		/*
+			move towards center
+		*/
+		else if ( elapsedTime > 235 && elapsedTime <= 240 ){
+
+			targetPosition.set( 0, 0, 0 ); //lets make it exact
+
+			// move to new loc ( 0, -150, 0 )
+
+			rateOfChange = 2;
+
+			if ( cameraPosition.y < -150 ){
+
+				cameraPosition.y += rateOfChange;
+			}
+		}
+		// Scene 11 ------------------------------------------------
+		/*
+			tilt 180 degrees
+		*/
+		else if ( elapsedTime > 240 && elapsedTime <= 310 ){
+
+			var deltaT = elapsedTime - 240;
+
+			var theta = mapRange( deltaT, 0, 70, 0, radians(180) );
+			cameraAngle.z = theta;
+		}
+		// Scene 12 ------------------------------------------------
+		/*
+			jump cut to loc beside logo
+		*/
+		else if ( elapsedTime > 310 && elapsedTime <= 315 ){
+
+			// move to new loc ( 0, -70, 60 )
+			//move diagonally (via line between the two points)
+			var m = ( 60 - 0 ) / ( -70 + 150 );  // dz / dy
+
+			if ( cameraPosition.y < -70 ){
+
+				cameraPosition.y += 0.4;
+				cameraPosition.z = m * ( cameraPosition.y + 150 ) + 0;  // z2 = m(y2 - y1) + z1
+			}
+		}
+		// Scene 13 ------------------------------------------------
+		/*
+			hold for a bit
+		*/
+		else if ( elapsedTime > 315 && elapsedTime <= 320 ){
+			// do nothing
+		}
+		// Scene 14 ------------------------------------------------
+		/*
+			pan back and tilt
+		*/
+		else if ( elapsedTime > 320 && elapsedTime <= 395 ){
+
+			// move to new loc ( 0, -375, 30 )
+
+			var rateOfChange = 0.2;
+
+			if ( cameraPosition.y > -375 ){
+
+				cameraPosition.y -= rateOfChange;
+			}
+
+			// tilt camera
+
+			var deltaT = elapsedTime - 320;
+
+			var theta = mapRange( deltaT, 0, 75, radians(180), radians(360) );
+			cameraAngle.z = theta;
+		}
+	};
+
+
+
+	// Render ////////////////////////////////////////////////////////////////
+
+	var render = function(){
+
+		requestAnimationFrame( render );
+
+		var time = Date.now() / 1000;  //seconds
+	
+		// Animate mesh
+		animArmadaLogo();
+		animSimpleSquareRings();
+		animFramedSquareRings();
+		animPyramidRings();
+		animOuterSphere();
+
+		// Move camera
+		if ( musicHasStarted ){
+			moveCamera( time );
+		}	
+
+		renderer.render( scene, camera );
+	};
+
+	window.addEventListener( 'resize', function() {
+
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+
+		renderer.setSize( window.innerWidth, window.innerHeight );
+
+	}, false );
+
+
+	render();
+
+
+
+	// Audio ////////////////////////////////////////////////////////////////
+	
+	// Web audio API
+	//  http://chimera.labs.oreilly.com/books/1234000001552/ch02.html
+	var sample = new VisualizerSample();
+
+	// Global variables
+	var musicAvgFrequency;  //updated by VisualizerSample object...
+	var musicHasStarted = false;	
+
+	// https://css-tricks.com/using-requestanimationframe/
+	// play music when buffer ready
+	var startMusic;
+	var pollIfReady = function(){
+		if ( sample.isReadyToUse ){
+
+			sample.togglePlayback(); //toggle music on and off			
+			window.cancelAnimationFrame( startMusic );
+
+			//remove loading screen
+			document.getElementById( "loading" ).style.display="none";
+
+			//start video
+			musicStartTime = Date.now() / 1000;  //seconds
+			musicHasStarted = true;
+		}
+		else{
+
+			startMusic = requestAnimationFrame( pollIfReady );
+		}
+	}
+	startMusic = requestAnimationFrame( pollIfReady );
+
+	// Handle audio load error
+	var updateLoadingScreen = function(){
+		document.getElementById("loadingScreen").style.display = "none";
+		document.getElementById("audioLoadError").style.display = "block";
+	}
+
+
+</script>
+</body>
+</html>
